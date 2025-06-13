@@ -32,7 +32,7 @@ import math
 import os
 import re
 import tempfile
-from typing import ContextManager, Generator, Optional
+from typing import ContextManager, Generator, Optional, cast
 
 import cryptography
 from cursive import exception as cursive_exception
@@ -164,20 +164,24 @@ def qemu_img_info(
         path: str,
         run_as_root: bool = True,
         force_share: bool = False,
-        allow_qcow2_backing_file: bool = False) -> imageutils.QemuImgInfo:
+        allow_qcow2_backing_file: bool = False,
+        img_format: Optional[str] = None) -> imageutils.QemuImgInfo:
     """Return an object containing the parsed output from qemu-img info."""
 
-    format_name = cinder.privsep.format_inspector.get_format_if_safe(
-        path=path,
-        allow_qcow2_backing_file=allow_qcow2_backing_file)
-    if format_name is None:
-        LOG.warning('Image/Volume %s failed safety check', path)
-        # NOTE(danms): This is the same exception as would be raised
-        # by qemu_img_info() if the disk format was unreadable or
-        # otherwise unsuitable.
-        raise exception.Invalid(
-            reason=_('Image/Volume failed safety check'))
+    format_name = img_format
+    if img_format != 'raw':
+        format_name = cinder.privsep.format_inspector.get_format_if_safe(
+            path=path,
+            allow_qcow2_backing_file=allow_qcow2_backing_file)
+        if format_name is None:
+            LOG.warning('Image/Volume %s failed safety check', path)
+            # NOTE(danms): This is the same exception as would be raised
+            # by qemu_img_info() if the disk format was unreadable or
+            # otherwise unsuitable.
+            raise exception.Invalid(
+                reason=_('Image/Volume failed safety check'))
 
+    format_name = cast(str, format_name)
     cmd = ['env', 'LC_ALL=C', 'qemu-img', 'info',
            '-f', format_name, '--output=json']
     if force_share:

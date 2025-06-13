@@ -850,7 +850,8 @@ class RemoteFSSnapDriverBase(RemoteFSDriver):
                             basedir: str,
                             ext_bf_template=None,
                             force_share=False,
-                            run_as_root=False) -> imageutils.QemuImgInfo:
+                            run_as_root=False,
+                            img_format=None) -> imageutils.QemuImgInfo:
         """Sanitize image_utils' qemu_img_info.
 
         This code expects to deal only with relative filenames.
@@ -869,7 +870,8 @@ class RemoteFSSnapDriverBase(RemoteFSDriver):
         info = image_utils.qemu_img_info(path,
                                          force_share=force_share,
                                          run_as_root=run_as_root,
-                                         allow_qcow2_backing_file=True)
+                                         allow_qcow2_backing_file=True,
+                                         img_format=img_format)
         if info.image:
             info.image = os.path.basename(info.image)
         if info.backing_file:
@@ -1389,6 +1391,11 @@ class RemoteFSSnapDriverBase(RemoteFSDriver):
                 self._img_commit(snapshot_path)
             # Active file has changed
             snap_info['active'] = base_file
+            # Update volume format to match the new active
+            snapshot.volume.admin_metadata['format'] = (
+                snapshot_path_img_info.backing_file_format)
+            with snapshot.volume.obj_as_admin():
+                snapshot.volume.save()
         else:
             #      T0        |      T1         |     T2         |      T3
             #     base       |  snapshot_file  |  higher_file   | highest_file
@@ -1715,6 +1722,7 @@ class RemoteFSSnapDriverBase(RemoteFSDriver):
             snapshot.volume)
         new_snap_path = self._get_new_snap_path(snapshot)
         active = os.path.basename(new_snap_path)
+        active_format = 'qcow2'
 
         if self._is_volume_attached(snapshot.volume):
             self._create_snapshot_online(snapshot,
